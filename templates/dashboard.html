@@ -1,0 +1,621 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-wrapper">
+    <!-- Top Navigation Bar -->
+    <nav class="top-nav">
+        <div class="nav-left" onclick="showSection('profile')" style="cursor: pointer;">
+            <div class="profile-avatar-sm">
+                {{ current_user.username[0]|upper }}
+            </div>
+            <span style="font-weight: 600;">{{ current_user.username }}</span>
+        </div>
+        <div class="nav-center">
+            <h2 class="gradient-text" style="font-weight: 800; letter-spacing: -1px;">GREENSHIELD</h2>
+        </div>
+        <div class="nav-right">
+            <button class="theme-toggle" onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+            <a href="{{ url_for('logout') }}" class="logout-btn"><i class="fas fa-power-off"></i></a>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <aside class="sidebar">
+            <a href="javascript:void(0)" onclick="showSection('main')" class="sidebar-link active" id="link-main"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="javascript:void(0)" onclick="showSection('history')" class="sidebar-link" id="link-history"><i class="fas fa-history"></i> Scan History</a>
+            <a href="javascript:void(0)" onclick="showSection('fertilizer')" class="sidebar-link" id="link-fertilizer"><i class="fas fa-seedling"></i> Fertilizers</a>
+            <a href="javascript:void(0)" onclick="showSection('weather')" class="sidebar-link" id="link-weather"><i class="fas fa-cloud-sun"></i> Weather Station</a>
+            <a href="javascript:void(0)" onclick="toggleChat()" class="sidebar-link"><i class="fas fa-robot"></i> AI Assistant</a>
+            <a href="javascript:void(0)" onclick="showSection('profile')" class="sidebar-link" id="link-profile"><i class="fas fa-user-cog"></i> Profile</a>
+            <div style="margin-top: auto;">
+                <a href="{{ url_for('logout') }}" class="sidebar-link" style="color: #e74c3c;"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            </div>
+        </aside>
+
+    <main class="main-content">
+        <div id="section-main">
+            <!-- Dynamic Welcome Header -->
+            <div class="welcome-banner glass">
+                <div class="welcome-text">
+                    <h1 style="font-size: 2.2rem; margin-bottom: 10px;">
+                        Good <span id="greeting-time">Day</span>, <span class="gradient-text">{{ current_user.username }}</span>!
+                    </h1>
+                    <p style="color: var(--text-muted); font-size: 1.1rem;">Your AI-powered farm monitoring system is active and scanning.</p>
+                </div>
+                <div class="weather-brief">
+                    <div style="font-size: 2rem; color: #f1c40f;"><i class="fas fa-cloud-sun"></i> 32°C</div>
+                    <div id="current-date" style="font-size: 0.8rem; text-align: right; color: var(--text-muted);"></div>
+                    <div style="font-size: 0.8rem; text-align: right; color: var(--text-muted);">Clear skies today</div>
+                </div>
+            </div>
+
+            <!-- Enhanced Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card modern">
+                    <div class="stat-info">
+                        <span class="stat-label">Total Diagnoses</span>
+                        <h3 class="stat-value">{{ history|length }}</h3>
+                        <div class="stat-trend positive">
+                            <i class="fas fa-history"></i> Lifetime Scans
+                        </div>
+                    </div>
+                    <div class="stat-visual"><i class="fas fa-microscope"></i></div>
+                </div>
+                <div class="stat-card modern" style="--card-color: #e67e22;">
+                    <div class="stat-info">
+                        <span class="stat-label">Critical Alerts</span>
+                        <h3 class="stat-value">
+                            {% set critical_count = history | selectattr('severity', 'equalto', 'Severe') | list | length %}
+                            {{ critical_count }}
+                        </h3>
+                        <div class="stat-trend {{ 'negative' if critical_count > 0 else 'positive' }}">
+                            <i class="fas fa-exclamation-triangle"></i> High Severity Issues
+                        </div>
+                    </div>
+                    <div class="stat-visual"><i class="fas fa-biohazard"></i></div>
+                </div>
+                <div class="stat-card modern" style="--card-color: #3498db;">
+                    <div class="stat-info">
+                        <span class="stat-label">Health Score</span>
+                        <h3 class="stat-value">
+                            {% if history|length > 0 %}
+                                {% set ns = namespace(penalty=0) %}
+                                {% for item in history %}
+                                    {% if item.severity == 'Severe' %}{% set ns.penalty = ns.penalty + 40 %}
+                                    {% elif item.severity == 'Moderate' %}{% set ns.penalty = ns.penalty + 20 %}
+                                    {% elif item.severity == 'Mild' %}{% set ns.penalty = ns.penalty + 10 %}
+                                    {% endif %}
+                                {% endfor %}
+                                {% set avg_penalty = (ns.penalty / history|length) %}
+                                {{ (100 - avg_penalty) | int if (100 - avg_penalty) > 0 else 0 }}%
+                            {% else %}
+                                100%
+                            {% endif %}
+                        </h3>
+                        <div class="stat-trend positive"><i class="fas fa-check-circle"></i> AI Optimized</div>
+                    </div>
+                    <div class="stat-visual"><i class="fas fa-brain"></i></div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid-main">
+                <!-- Innovative Upload Zone -->
+                <div class="upload-zone-wrapper">
+                    <div class="upload-card-cyber" id="capture-container">
+                        <div class="scanner-line" id="scanner-line" style="display: none;"></div>
+                        <div id="upload-content-inner">
+                            <div class="cyber-icon"><i class="fas fa-dna"></i></div>
+                            <h3>Initialize Neural Scan</h3>
+                            <p>Upload or use live camera for AI diagnosis</p>
+                            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                                <button onclick="event.stopPropagation(); document.getElementById('file-input').click()" class="btn btn-primary"><i class="fas fa-upload"></i> Browse</button>
+                            </div>
+                        </div>
+
+                        <input type="file" id="file-input" hidden accept="image/*" onchange="previewImage(this)">
+                    </div>
+                </div>
+
+                <!-- Live Feed / Activity -->
+                <div class="glass" style="padding: 25px; display: flex; flex-direction: column;">
+                    <h4 style="margin-bottom: 20px;"><i class="fas fa-bolt" style="color: #f1c40f;"></i> Live Feed</h4>
+                    <div class="activity-feed">
+                        <div class="feed-item">
+                            <div class="feed-dot"></div>
+                            <div class="feed-text">
+                                <strong>System Online</strong>
+                                <span>Neural Engine V2.4 successfully loaded</span>
+                            </div>
+                        </div>
+                        <div class="feed-item">
+                            <div class="feed-dot" style="background: var(--primary);"></div>
+                            <div class="feed-text">
+                                <strong>Database Updated</strong>
+                                <span>150+ new plant diseases indexed</span>
+                            </div>
+                        </div>
+                        <div class="feed-item">
+                            <div class="feed-dot" style="background: #e74c3c;"></div>
+                            <div class="feed-text">
+                                <strong>Alert Triggered</strong>
+                                <span>Potential blight detected in Sector 4</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <div id="loading" style="display: none; text-align: center; margin-top: 30px;">
+                <div class="spinner-cyber"></div>
+                <p id="loading-text" style="margin-top: 15px; color: var(--text-muted); font-weight: 500; letter-spacing: 1px; height: 20px;">INITIALIZING NEURAL LINK...</p>
+                <div style="width: 200px; height: 4px; background: rgba(255,255,255,0.1); margin: 20px auto; border-radius: 2px; overflow: hidden;">
+                    <div id="loading-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+
+            <div id="error-message" class="glass" style="display: none; margin-top: 20px; padding: 20px; background: rgba(231, 76, 60, 0.1); color: #e74c3c; border-color: rgba(231, 76, 60, 0.2); text-align: center; font-weight: 600;"></div>
+
+            <div id="result-area" class="result-container" style="margin-top: 40px;">
+                <!-- Result card remains same for now as it's already functional -->
+                <div class="result-card glass">
+                    <img id="preview-img" src="" class="result-image" alt="Preview">
+                    <div class="result-info">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <h2 id="res-disease" class="gradient-text" style="font-size: 2rem;"></h2>
+                                <p style="font-weight: 600; margin-bottom: 5px; color: var(--text-muted);">
+                                    <i class="fas fa-bug"></i> Cause: <span id="res-category" style="color: var(--accent);"></span>
+                                </p>
+                                <div id="res-location-wrapper" style="font-size: 0.8rem; color: var(--primary); display: flex; align-items: center; gap: 5px;">
+                                    <i class="fas fa-map-marker-alt"></i> <span id="res-location">Detecting...</span>
+                                </div>
+                            </div>
+                            <span id="res-severity" class="severity-badge"></span>
+                        </div>
+                        <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                            <div>
+                                <h4 style="color: var(--accent);"><i class="fas fa-search"></i> What Happened</h4>
+                                <p id="res-symptoms" style="font-size: 0.9rem; color: var(--text-muted);"></p>
+                            </div>
+                            <div>
+                                <h4 style="color: var(--primary);"><i class="fas fa-flask"></i> Treatment</h4>
+                                <p id="res-treatment" style="font-size: 0.9rem; color: var(--text-muted);"></p>
+                            </div>
+                            <div>
+                                <h4 style="color: var(--secondary);"><i class="fas fa-shield-alt"></i> Prevention</h4>
+                                <p id="res-prevention" style="font-size: 0.9rem; color: var(--text-muted);"></p>
+                            </div>
+                        </div>
+                        <div style="margin-top: 25px; padding-top: 25px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 30px;">
+                            <div>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Confidence</span>
+                                <div id="res-confidence" style="font-weight: 700; color: var(--primary);"></div>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Estimated Cost</span>
+                                <div id="res-cost" style="font-weight: 700;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div id="section-history" style="display: none;">
+            <div class="history-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3>Complete Scan History</h3>
+                    <button onclick="exportHistory()" class="btn" style="background: #27ae60; color: white;"><i class="fas fa-file-csv"></i> Export CSV</button>
+                </div>
+                <table class="history-table">
+                    <!-- History table content... -->
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Disease</th>
+                            <th>Severity</th>
+                            <th>Confidence</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in history %}
+                        <tr>
+                            <td>{{ item.prediction_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ item.disease.name if item.disease else 'Unknown' }}</td>
+                            <td><span class="severity-badge severity-{{ item.severity }}">{{ item.severity }}</span></td>
+                            <td>{{ (item.confidence * 100)|round(2) }}%</td>
+                            <td>
+                                <a href="{{ url_for('download_report', prediction_id=item.id) }}" class="btn" style="padding: 5px 15px; font-size: 0.8rem; border: 1px solid #ddd;"><i class="fas fa-download"></i> PDF</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="section-profile" style="display: none;">
+            <div class="glass" style="padding: 40px; background: var(--card-bg);">
+                <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 40px;">
+                    <div style="width: 100px; height: 100px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">
+                        {{ current_user.username[0]|upper }}
+                    </div>
+                    <div>
+                        <h2>{{ current_user.username }}</h2>
+                        <p style="color: var(--text-muted);">{{ current_user.email }}</p>
+                        <span class="severity-badge severity-Mild" style="margin-top: 10px; display: inline-block;">Premium Member</span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div style="padding: 20px; background: rgba(0,0,0,0.02); border-radius: 15px;">
+                        <h4 style="margin-bottom: 10px;">Account Settings</h4>
+                        <button class="btn" style="width: 100%; border: 1px solid #ddd;">Change Password</button>
+                    </div>
+                    <div style="padding: 20px; background: rgba(0,0,0,0.02); border-radius: 15px;">
+                        <h4 style="margin-bottom: 10px;">Notifications</h4>
+                        <button class="btn" style="width: 100%; border: 1px solid #ddd;">Manage Alerts</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="section-fertilizer" style="display: none;">
+            <div class="glass" style="padding: 30px; background: var(--card-bg);">
+                <h2 class="gradient-text">Smart Fertilizer Recommender</h2>
+                <p style="margin-bottom: 30px;">Select a detected disease to see optimized treatment plans.</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px;">
+                    <div class="stat-card" style="cursor: pointer; border: 1px solid rgba(46, 204, 113, 0.2);">
+                        <i class="fas fa-vial" style="font-size: 2rem; color: var(--primary);"></i>
+                        <div>
+                            <h4>NPK 19-19-19</h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted);">For general leaf recovery</p>
+                        </div>
+                    </div>
+                    <div class="stat-card" style="cursor: pointer; border: 1px solid rgba(46, 204, 113, 0.2);">
+                        <i class="fas fa-bug" style="font-size: 2rem; color: #e74c3c;"></i>
+                        <div>
+                            <h4>Neem Oil Mix</h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted);">For Bacterial/Viral defense</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="section-weather" style="display: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                <div class="stat-card" style="flex-direction: column; text-align: center;">
+                    <i class="fas fa-sun" style="font-size: 3rem; color: #f1c40f; margin-bottom: 15px;"></i>
+                    <h3>32°C</h3>
+                    <p>Temperature</p>
+                </div>
+                <div class="stat-card" style="flex-direction: column; text-align: center;">
+                    <i class="fas fa-tint" style="font-size: 3rem; color: #3498db; margin-bottom: 15px;"></i>
+                    <h3>65%</h3>
+                    <p>Humidity</p>
+                </div>
+                <div class="stat-card" style="flex-direction: column; text-align: center;">
+                    <i class="fas fa-wind" style="font-size: 3rem; color: #95a5a6; margin-bottom: 15px;"></i>
+                    <h3>12 km/h</h3>
+                    <p>Wind Speed</p>
+                </div>
+            </div>
+
+            <div class="glass" style="margin-top: 30px; padding: 30px; background: var(--card-bg);">
+                <h3 style="margin-bottom: 20px;"><i class="fas fa-biohazard"></i> Disease Risk Forecast</h3>
+                <div style="display: flex; align-items: center; gap: 30px;">
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span>Fungal Growth Risk</span>
+                            <span style="color: #e74c3c; font-weight: 700;">85% High</span>
+                        </div>
+                        <div style="height: 10px; background: rgba(0,0,0,0.1); border-radius: 5px; overflow: hidden;">
+                            <div style="width: 85%; height: 100%; background: #e74c3c;"></div>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span>Bacterial Risk</span>
+                            <span style="color: #f39c12; font-weight: 700;">40% Moderate</span>
+                        </div>
+                        <div style="height: 10px; background: rgba(0,0,0,0.1); border-radius: 5px; overflow: hidden;">
+                            <div style="width: 40%; height: 100%; background: #f39c12;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 30px; padding: 20px; background: rgba(231, 76, 60, 0.05); border-left: 5px solid #e74c3c; border-radius: 10px;">
+                    <h4 style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> Agronomist Alert</h4>
+                    <p style="font-size: 0.9rem; margin-top: 5px;">High humidity and temperature levels today are ideal for **Blight** and **Leaf Mold**. We recommend a proactive organic fungicide spray in the evening.</p>
+                </div>
+            </div>
+            <div class="glass" style="margin-top: 30px; padding: 25px; border-left: 5px solid #f1c40f;">
+                <h4 style="color: #f1c40f;"><i class="fas fa-exclamation-circle"></i> Agricultural Alert</h4>
+                <p style="margin-top: 10px;">Ideal conditions for Potato Late Blight. Monitor your crops closely today.</p>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Chatbot Widget -->
+<div id="chat-widget" style="position: fixed; bottom: 30px; right: 30px; z-index: 1000;">
+    <button onclick="toggleChat()" style="width: 60px; height: 60px; border-radius: 50%; background: var(--primary); color: white; border: none; font-size: 1.5rem; cursor: pointer; box-shadow: var(--shadow);">
+        <i class="fas fa-comment-dots"></i>
+    </button>
+    <div id="chat-window" class="glass" style="display: none; position: absolute; bottom: 80px; right: 0; width: 350px; height: 450px; background: var(--card-bg); flex-direction: column; overflow: hidden; box-shadow: var(--shadow);">
+        <div style="background: var(--primary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600;">GreenShield AI Guide</span>
+            <i class="fas fa-times" onclick="toggleChat()" style="cursor: pointer;"></i>
+        </div>
+
+        <div id="chat-messages" style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+            <div style="background: rgba(0,0,0,0.05); color: var(--text-main); padding: 10px 15px; border-radius: 15px; align-self: flex-start; max-width: 80%; font-size: 0.9rem; border: 1px solid rgba(0,0,0,0.05);">
+                Hello! I'm your AI Agricultural Assistant. How can I help you today?
+            </div>
+        </div>
+        <div style="padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px;">
+            <input type="text" id="chat-input" placeholder="Ask about crop health..." style="flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #ddd;">
+            <button onclick="sendMessage()" style="background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 10px; cursor: pointer;">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</div> <!-- End dashboard-wrapper -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Theme & Greeting Initialization
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        const icon = document.getElementById('theme-icon');
+        if (icon) icon.className = savedTheme === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+        
+        const hour = new Date().getHours();
+        let greeting = "Day";
+        if (hour < 12) greeting = "Morning";
+        else if (hour < 18) greeting = "Afternoon";
+        else greeting = "Evening";
+        document.getElementById('greeting-time').innerText = greeting;
+    });
+
+    function showSection(sectionId) {
+        console.log("Switching to section:", sectionId);
+        const sections = ['main', 'history', 'profile', 'fertilizer', 'weather'];
+        
+        sections.forEach(s => {
+            const el = document.getElementById('section-' + s);
+            const link = document.getElementById('link-' + s);
+            if (el) el.style.display = 'none';
+            if (link) link.classList.remove('active');
+        });
+        
+        const targetSection = document.getElementById('section-' + sectionId);
+        const targetLink = document.getElementById('link-' + sectionId);
+        
+        if (targetSection) {
+            targetSection.style.display = 'block';
+            if (targetLink) targetLink.classList.add('active');
+            
+            // Trigger specific section initializations
+        } else {
+            console.error("Section not found:", 'section-' + sectionId);
+        }
+    }
+
+    function exportHistory() {
+        const rows = document.querySelectorAll('.history-table tr');
+        let csv = "Date,Disease,Severity,Confidence\n";
+        for (let i = 1; i < rows.length; i++) {
+            const cols = rows[i].querySelectorAll('td');
+            csv += `${cols[0].innerText},${cols[1].innerText},${cols[2].innerText},${cols[3].innerText}\n`;
+        }
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'greenshield_history.csv';
+        a.click();
+    }
+
+    document.getElementById('current-date').innerText = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    function previewImage(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('preview-img').src = e.target.result;
+                uploadImage();
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    async function uploadImage() {
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // --- REAL TIME LOCATION START ---
+        let locationName = "Scanning Field...";
+        try {
+            const pos = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+            });
+            formData.append('lat', pos.coords.latitude);
+            formData.append('lng', pos.coords.longitude);
+            // Optional: Reverse geocoding could go here, for now use coordinates
+            locationName = `Field: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+            formData.append('location_name', locationName);
+        } catch (e) {
+            console.warn("Location access denied or timed out");
+            formData.append('location_name', "Unknown Location");
+        }
+        // --- REAL TIME LOCATION END ---
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('result-area').style.display = 'none';
+        document.getElementById('error-message').style.display = 'none';
+        
+        const loadingText = document.getElementById('loading-text');
+        const loadingBar = document.getElementById('loading-bar');
+        
+        const steps = [
+            { t: "UPLOADING SPECIMEN...", p: 20 },
+            { t: "INITIALIZING NEURAL LINK...", p: 40 },
+            { t: "ANALYZING CELLULAR STRUCTURE...", p: 70 },
+            { t: "DECRYPTING DIAGNOSIS...", p: 90 }
+        ];
+        
+        let currentStep = 0;
+        const interval = setInterval(() => {
+            if (currentStep < steps.length) {
+                loadingText.innerText = steps[currentStep].t;
+                loadingBar.style.width = steps[currentStep].p + "%";
+                currentStep++;
+            }
+        }, 800);
+
+        try {
+            const response = await fetch('/analyze', {
+                method: 'POST',
+                body: formData
+            });
+            
+            clearInterval(interval);
+            loadingBar.style.width = "100%";
+            
+            if (!response.ok) {
+                let errorMessage = 'Server error';
+                try {
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        const errData = await response.json();
+                        errorMessage = errData.error || errorMessage;
+                    } else {
+                        errorMessage = await response.text();
+                    }
+                } catch (e) {
+                    errorMessage = response.statusText || 'Unknown server error';
+                }
+                throw new Error(errorMessage);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('res-disease').innerText = data.disease;
+                document.getElementById('res-category').innerText = data.category;
+                document.getElementById('res-severity').innerText = data.severity;
+                document.getElementById('res-severity').className = `severity-badge severity-${data.severity}`;
+                document.getElementById('res-symptoms').innerText = data.symptoms;
+                document.getElementById('res-treatment').innerText = data.treatment;
+                document.getElementById('res-prevention').innerText = data.prevention;
+                document.getElementById('res-confidence').innerText = data.confidence;
+                document.getElementById('res-cost').innerText = data.cost;
+                document.getElementById('res-location').innerText = data.location || "Unknown Location";
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('result-area').style.display = 'block';
+
+            }
+            // Reset file input so same file can be scanned again
+            document.getElementById('file-input').value = '';
+        } catch (error) {
+            console.error('Analysis Error:', error);
+            const errArea = document.getElementById('error-message');
+            if (errArea) {
+                errArea.innerText = "Analysis failed: " + error.message;
+                errArea.style.display = 'block';
+            } else {
+                alert("Analysis failed: " + error.message);
+            }
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('file-input').value = '';
+        }
+    }
+
+    // Chatbot Logic
+    function toggleChat() {
+        const win = document.getElementById('chat-window');
+        win.style.display = win.style.display === 'none' ? 'flex' : 'none';
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('chat-input');
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        appendMessage('user', msg);
+        input.value = '';
+
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg })
+        });
+        const data = await response.json();
+        appendMessage('ai', data.reply);
+    }
+
+    function appendMessage(sender, text) {
+        const container = document.getElementById('chat-messages');
+        const div = document.createElement('div');
+        div.style.padding = '10px 15px';
+        div.style.borderRadius = '15px';
+        div.style.fontSize = '0.9rem';
+        div.style.maxWidth = '80%';
+        if (sender === 'user') {
+            div.style.background = 'var(--primary)';
+            div.style.color = 'white';
+            div.style.alignSelf = 'flex-end';
+        } else {
+            // Updated for Dark Mode Visibility
+            div.style.background = 'rgba(255,255,255,0.1)';
+            div.style.color = 'var(--text-main)';
+            div.style.border = '1px solid rgba(255,255,255,0.1)';
+            div.style.alignSelf = 'flex-start';
+        }
+        div.innerText = text;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+
+
+
+
+    function toggleTheme() {
+        const body = document.documentElement;
+        const icon = document.getElementById('theme-icon');
+        const currentTheme = body.getAttribute('data-theme') || 'dark';
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        
+        body.setAttribute('data-theme', newTheme);
+        icon.className = newTheme === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
+        localStorage.setItem('theme', newTheme);
+    }
+
+
+</script>
+{% endblock %}

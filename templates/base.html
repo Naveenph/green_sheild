@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenShield - AI Plant Disease Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body data-theme="light">
+    <!-- Custom Cursor -->
+    <div class="cursor-dot"></div>
+    <div class="cursor-outline"></div>
+
+    <header>
+        <div class="logo">
+            <i class="fas fa-leaf"></i>
+            <span>GreenShield</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('index') }}">Home</a></li>
+            {% if current_user.is_authenticated %}
+                <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+                {% if current_user.role == 'admin' %}
+                    <li><a href="{{ url_for('admin_dashboard') }}">Admin</a></li>
+                {% endif %}
+                <li><a href="{{ url_for('logout') }}" class="btn btn-primary" style="color: white; padding: 8px 20px;">Logout</a></li>
+            {% else %}
+                <li><a href="{{ url_for('login') }}">Login</a></li>
+                <li><a href="{{ url_for('register') }}" class="btn btn-primary" style="color: white; padding: 8px 20px;">Get Started</a></li>
+            {% endif %}
+            <li>
+                <button class="theme-toggle" onclick="toggleTheme()">
+                    <i class="fas fa-moon"></i>
+                </button>
+            </li>
+        </ul>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        // Theme Persistence
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+            
+            // Sync cursor
+            const cursorOutline = document.querySelector(".cursor-outline");
+            if (cursorOutline) {
+                cursorOutline.style.borderColor = newTheme === 'light' ? '#2ecc71' : '#27ae60';
+            }
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.querySelector('.theme-toggle i');
+            if (icon) {
+                icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+            }
+        }
+
+        // Custom Cursor Logic (Performance Optimized)
+        const cursorDot = document.querySelector(".cursor-dot");
+        const cursorOutline = document.querySelector(".cursor-outline");
+
+        if (window.matchMedia("(pointer: fine)").matches) {
+            window.addEventListener("mousemove", (e) => {
+                const posX = e.clientX;
+                const posY = e.clientY;
+
+                if (cursorDot) cursorDot.style.transform = `translate(${posX}px, ${posY}px)`;
+                
+                if (cursorOutline) {
+                    cursorOutline.animate({
+                        transform: `translate(${posX}px, ${posY}px)`
+                    }, { duration: 400, fill: "forwards" });
+                }
+            });
+
+            // Magnetic effect for buttons
+            document.querySelectorAll('.btn, .logo, .theme-toggle, a').forEach(el => {
+                el.addEventListener('mouseenter', () => {
+                    if (cursorOutline) {
+                        cursorOutline.style.width = '60px';
+                        cursorOutline.style.height = '60px';
+                        cursorOutline.style.backgroundColor = 'rgba(46, 204, 113, 0.1)';
+                    }
+                });
+                el.addEventListener('mouseleave', () => {
+                    if (cursorOutline) {
+                        cursorOutline.style.width = '40px';
+                        cursorOutline.style.height = '40px';
+                        cursorOutline.style.backgroundColor = 'transparent';
+                    }
+                });
+            });
+        } else {
+            if (cursorDot) cursorDot.style.display = 'none';
+            if (cursorOutline) cursorOutline.style.display = 'none';
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
